@@ -203,6 +203,9 @@ struct sslhaf_cfg_t {
     /* The entire raw handshake packet, consisting of a record layer packet with a
      * Client Hello inside it. Encoded as a string of hexadecimal characters. */    
     const char *client_hello;
+
+    const char *ec_point;
+    const char *curves;
 };
 
 typedef struct sslhaf_cfg_t sslhaf_cfg_t;
@@ -546,9 +549,6 @@ static int decode_packet_v3_handshake(ap_filter_t *f, sslhaf_cfg_t *cfg) {
             
             *q = '\0';
             mylen -= cfg->slen * 2;
-
-            // Convert list of suites to decimal representation
-            int suites
             
             // Compression
             if (mylen < 1) { // compression data length
@@ -605,8 +605,8 @@ static int decode_packet_v3_handshake(ap_filter_t *f, sslhaf_cfg_t *cfg) {
 			if (q == NULL) return -1;            
             cfg->extensions = (const char *)q;
 
-            char ec_point_formats[] = "000a";
-            char supported_groups[] = "000b";
+            int ec_point_ext_id = 10;
+            int curve_ext_id = 11;
             while(elen > 0) {
                 cfg->extensions_len++;
                 
@@ -614,35 +614,36 @@ static int decode_packet_v3_handshake(ap_filter_t *f, sslhaf_cfg_t *cfg) {
                     *q++ = ',';
                 }
                 
-                char ext_type[5];
-
                 // extension type, byte 1                
                 c2x(*p, q);
-                ext_type[0] = *q;
-                ext_type[1] = *(q+1);
+                unsigned b1 = *p;
                 p++;
                 elen--;
                 q += 2;
                 
                 // extension type, byte 2
                 c2x(*p, q);
-                ext_type[2] = *q;
-                ext_type[3] = *(q+1);
-                ext_type[4] = '\0';
+                unsigned b2 = *p;
                 p++;
                 elen--;
                 q += 2;
+
+                int ext_type = (b1 * 256) + b2;
                 
                 // extension length
                 int ext1len = (*p * 256) + *(p + 1);
                 p += 2;
                 elen -= 2;
+
+                // p += ext1len;
+                // elen -= ext1len;  
                 
                 // skip over extension data if we're not interested in it
-                if (strcmp(ext_type,ec_point_formats) == 0) {
+                if (ext_type == ec_point_ext_id) {
                     int ec_len = (*p * 256) + *(p + 1);
                     p += 2;
-                    elen -= 2;
+                    // elen -= 2;
+                    unsigned char *e;
                     e = apr_pcalloc(f->c->pool, (ec_len * 5) + 1);
                     cfg->ec_point = (const char *)e;
 
@@ -653,24 +654,33 @@ static int decode_packet_v3_handshake(ap_filter_t *f, sslhaf_cfg_t *cfg) {
                         c2x(*p, e);
                         p++;
                         ec_len--;
-                    }
-                    *e = '\0'
-                } else if (strcmp(ext_type,supported_groups) == 0) {
-                    int curve_len = (*p * 256) + *(p + 1);
-                    p += 2;
-                    elen -= 2;
-                    c = apr_pcalloc(f->c->pool, (curve_len * 5) + 1);
-                    cfg->curves = (const char *)c;
-
-                    while (curve_len > 0) {
-                        if ((const char *)c != cfg->curves) {
-                            *c++ = '-';
-                        }
-                        c2x(*p, c);
+                        e += 2;
+                        c2x(*p, e);
                         p++;
-                        curve_len--;
+                        ec_len--;
+                        e += 2;
                     }
-                    *c = '\0'
+                    *e = '\0';
+                    elen -= ext1len;
+                // } else if (false) {
+                //     int curve_len = (*p * 256) + *(p + 1);
+                //     p += 2;
+                //     // elen -= 2;
+                //     unsigned char *c;
+                //     c = apr_pcalloc(f->c->pool, (curve_len * 5) + 1);
+                //     cfg->curves = (const char *)c;
+
+                //     while (curve_len > 0) {
+                //         if ((const char *)c != cfg->curves) {
+                //             *c++ = '-';
+                //         }
+                //         c2x(*p, c);
+                //         p++;
+                //         curve_len--;
+                //         c+= 2;
+                //     }
+                //     *c = '\0';
+                //     elen -= ext1len;
                 } else {
                     p += ext1len;
                     elen -= ext1len;      
@@ -1034,6 +1044,7 @@ static int sslhaf_post_request(request_rec *r) {
         apr_table_setn(r->subprocess_env, "SSLHAF_EXTENSIONS", cfg->extensions);
 
         // Expose ec_point_format and curves
+        // char *ec = apr_psprintf(r->pool, "%d", cfg->ec_point);
         apr_table_setn(r->subprocess_env, "EC_POINT", cfg->ec_point);
         apr_table_setn(r->subprocess_env, "CURVES", cfg->curves);
 
