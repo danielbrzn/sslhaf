@@ -546,6 +546,9 @@ static int decode_packet_v3_handshake(ap_filter_t *f, sslhaf_cfg_t *cfg) {
             
             *q = '\0';
             mylen -= cfg->slen * 2;
+
+            // Convert list of suites to decimal representation
+            int suites
             
             // Compression
             if (mylen < 1) { // compression data length
@@ -601,22 +604,31 @@ static int decode_packet_v3_handshake(ap_filter_t *f, sslhaf_cfg_t *cfg) {
             q = apr_pcalloc(f->c->pool, (elen * 5) + 1);
 			if (q == NULL) return -1;            
             cfg->extensions = (const char *)q;
-            
+
+            char ec_point_formats[] = "000a";
+            char supported_groups[] = "000b";
             while(elen > 0) {
                 cfg->extensions_len++;
                 
                 if ((const char *)q != cfg->extensions) {
                     *q++ = ',';
                 }
+                
+                char ext_type[5];
 
                 // extension type, byte 1                
                 c2x(*p, q);
+                ext_type[0] = *q;
+                ext_type[1] = *(q+1);
                 p++;
                 elen--;
                 q += 2;
                 
                 // extension type, byte 2
                 c2x(*p, q);
+                ext_type[2] = *q;
+                ext_type[3] = *(q+1);
+                ext_type[4] = '\0';
                 p++;
                 elen--;
                 q += 2;
@@ -626,9 +638,43 @@ static int decode_packet_v3_handshake(ap_filter_t *f, sslhaf_cfg_t *cfg) {
                 p += 2;
                 elen -= 2;
                 
-                // skip over extension data
-                p += ext1len;
-                elen -= ext1len;                
+                // skip over extension data if we're not interested in it
+                if (strcmp(ext_type,ec_point_formats) == 0) {
+                    int ec_len = (*p * 256) + *(p + 1);
+                    p += 2;
+                    elen -= 2;
+                    e = apr_pcalloc(f->c->pool, (ec_len * 5) + 1);
+                    cfg->ec_point = (const char *)e;
+
+                    while (ec_len > 0) {
+                        if ((const char *)e != cfg->ec_point) {
+                            *e++ = '-';
+                        }
+                        c2x(*p, e);
+                        p++;
+                        ec_len--;
+                    }
+                    *e = '\0'
+                } else if (strcmp(ext_type,supported_groups) == 0) {
+                    int curve_len = (*p * 256) + *(p + 1);
+                    p += 2;
+                    elen -= 2;
+                    c = apr_pcalloc(f->c->pool, (curve_len * 5) + 1);
+                    cfg->curves = (const char *)c;
+
+                    while (curve_len > 0) {
+                        if ((const char *)c != cfg->curves) {
+                            *c++ = '-';
+                        }
+                        c2x(*p, c);
+                        p++;
+                        curve_len--;
+                    }
+                    *c = '\0'
+                } else {
+                    p += ext1len;
+                    elen -= ext1len;      
+                }
             }
             
             *q = '\0';
@@ -978,7 +1024,7 @@ static int sslhaf_post_request(request_rec *r) {
         apr_table_setn(r->subprocess_env, "SSLHAF_HANDSHAKE", cfg->thandshake);
         apr_table_setn(r->subprocess_env, "SSLHAF_PROTOCOL", cfg->tprotocol);
         apr_table_setn(r->subprocess_env, "SSLHAF_SUITES", cfg->tsuites);
-        
+
         // Expose compression methods
         apr_table_setn(r->subprocess_env, "SSLHAF_COMPRESSION", cfg->compression_methods);
         
@@ -986,6 +1032,11 @@ static int sslhaf_post_request(request_rec *r) {
         char *extensions_len = apr_psprintf(r->pool, "%d", cfg->extensions_len);
         apr_table_setn(r->subprocess_env, "SSLHAF_EXTENSIONS_LEN", extensions_len);
         apr_table_setn(r->subprocess_env, "SSLHAF_EXTENSIONS", cfg->extensions);
+
+        // Expose ec_point_format and curves
+        apr_table_setn(r->subprocess_env, "EC_POINT", cfg->ec_point);
+        apr_table_setn(r->subprocess_env, "CURVES", cfg->curves);
+
 
         // Keep track of how many requests there were
         cfg->request_counter++;
