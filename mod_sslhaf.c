@@ -122,6 +122,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "apr_hash.h"
 #include "apr_optional.h"
 #include "apr_sha1.h"
+#include "apr_md5.h"
 #include "apr_strings.h"
 #define APR_WANT_STRFUNC
 #include "apr_want.h"
@@ -260,6 +261,19 @@ char *generate_sha1(apr_pool_t *pool, char *data, int len) {
     return bytes2hex(pool, digest, APR_SHA1_DIGESTSIZE);
 }
 
+char *generate_ja3(char *ver, char *ciph, char *ext, char *ec, char *ec_pf) {
+    unsigned char digest[APR_MD5_DIGESTSIZE];
+    apr_md5_ctx_t context;
+
+    apr_md5_init(&context);
+    apr_md5_update(&context, (const char *)(strcat(ver, ",")), len);
+    apr_md5_update(&context, (const char *)(strcat(ciph, ",")) len);
+    apr_md5_update(&context, (const char *)(strcat(ext, ",")), len);
+    apr_md5_update(&context, (const char *)(strcat(ec, ",")), len);
+    apr_md5_update(&context, (const char *)ec_pf, len);
+    apr_md5_final(digest, &context);
+    return digest;
+}
 /**
  * Convert one byte into its hexadecimal representation.
  */
@@ -1185,6 +1199,8 @@ static int sslhaf_post_request(request_rec *r) {
         if (cfg->request_counter == 1) {
             apr_table_setn(r->subprocess_env, "SSLHAF_LOG", "1");
         }
+
+        apr_table_setn(r->subprocess_env, "JA3_HASH", generate_ja3(protocol_ver, suites, ext, curves, ec_pt))
         
         #if 0
         // Generate a sha1 of the remote address on the first request
