@@ -662,25 +662,24 @@ static int decode_packet_v3_handshake(ap_filter_t *f, sslhaf_cfg_t *cfg) {
                     }
                     *e = '\0';
                     elen -= ext1len;
-                // } else if (false) {
-                //     int curve_len = (*p * 256) + *(p + 1);
-                //     p += 2;
-                //     // elen -= 2;
-                //     unsigned char *c;
-                //     c = apr_pcalloc(f->c->pool, (curve_len * 5) + 1);
-                //     cfg->curves = (const char *)c;
+                } else if (ext_type == curve_ext_id) {
+                    int curve_len = (*p * 256);
+                    p++;
+                    unsigned char *c;
+                    c = apr_pcalloc(f->c->pool, (curve_len * 5) + 1);
+                    cfg->curves = (const char *)c;
 
-                //     while (curve_len > 0) {
-                //         if ((const char *)c != cfg->curves) {
-                //             *c++ = '-';
-                //         }
-                //         c2x(*p, c);
-                //         p++;
-                //         curve_len--;
-                //         c+= 2;
-                //     }
-                //     *c = '\0';
-                //     elen -= ext1len;
+                    while (curve_len > 0) {
+                        if ((const char *)c != cfg->curves) {
+                            *c++ = '-';
+                        }
+                        c2x(*p, c);
+                        p++;
+                        curve_len--;
+                        c+= 2;
+                    }
+                    *c = '\0';
+                    elen -= ext1len;
                 } else {
                     p += ext1len;
                     elen -= ext1len;      
