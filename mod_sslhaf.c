@@ -663,7 +663,7 @@ static int decode_packet_v3_handshake(ap_filter_t *f, sslhaf_cfg_t *cfg) {
                     *e = '\0';
                     elen -= ext1len;
                 } else if (ext_type == curve_ext_id) {
-                    int curve_len = (*p * 256);
+                    int curve_len = *p;
                     p++;
                     unsigned char *c;
                     c = apr_pcalloc(f->c->pool, (curve_len * 5) + 1);
