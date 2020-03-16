@@ -1061,13 +1061,13 @@ static int sslhaf_post_request(request_rec *r) {
         apr_table_setn(r->subprocess_env, "SSLHAF_HANDSHAKE", cfg->thandshake);
         char * protocol_ver;
         if (strcmp("3.0", cfg->tprotocol) == 0) {
-            protocol_ver = "769";
+            protocol_ver = "768";
         } else if (strcmp("3.1", cfg->tprotocol) == 0) {
-            protocol_ver = "770";
+            protocol_ver = "769";
         } else if (strcmp("3.2", cfg->tprotocol) == 0) {
-            protocol_ver = "771";
+            protocol_ver = "770";
         } else if (strcmp("3.3", cfg->tprotocol) == 0) {
-            protocol_ver = "772";
+            protocol_ver = "771";
         } else {
         }
 
