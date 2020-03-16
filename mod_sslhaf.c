@@ -135,6 +135,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "mod_log_config.h"
 
+#include <math.h>
+
 module AP_MODULE_DECLARE_DATA sslhaf_module;
 
 static const char sslhaf_in_filter_name[] = "SSLHAF_IN";
@@ -206,6 +208,7 @@ struct sslhaf_cfg_t {
 
     const char *ec_point;
     const char *curves;
+    int curve_len;
 };
 
 typedef struct sslhaf_cfg_t sslhaf_cfg_t;
@@ -269,6 +272,10 @@ unsigned char *c2x(unsigned what, unsigned char *where) {
                 
     return where;
 }
+
+// int hex_to_dec(char *data) {
+    
+// }
 
 /**
  * Logs the current Client Hello to the error log.
@@ -605,8 +612,8 @@ static int decode_packet_v3_handshake(ap_filter_t *f, sslhaf_cfg_t *cfg) {
 			if (q == NULL) return -1;            
             cfg->extensions = (const char *)q;
 
-            int ec_point_ext_id = 10;
-            int curve_ext_id = 11;
+            int ec_point_ext_id = 11;
+            int group_id = 10;
             while(elen > 0) {
                 cfg->extensions_len++;
                 
@@ -639,17 +646,17 @@ static int decode_packet_v3_handshake(ap_filter_t *f, sslhaf_cfg_t *cfg) {
                 // elen -= ext1len;  
                 
                 // skip over extension data if we're not interested in it
-                if (ext_type == ec_point_ext_id) {
+                if (ext_type == group_id) {
                     int ec_len = (*p * 256) + *(p + 1);
                     p += 2;
                     // elen -= 2;
                     unsigned char *e;
                     e = apr_pcalloc(f->c->pool, (ec_len * 5) + 1);
-                    cfg->ec_point = (const char *)e;
+                    cfg->curves = (const char *)e;
 
                     while (ec_len > 0) {
-                        if ((const char *)e != cfg->ec_point) {
-                            *e++ = '-';
+                        if ((const char *)e != cfg->curves) {
+                            *e++ = ',';
                         }
                         c2x(*p, e);
                         p++;
@@ -662,20 +669,21 @@ static int decode_packet_v3_handshake(ap_filter_t *f, sslhaf_cfg_t *cfg) {
                     }
                     *e = '\0';
                     elen -= ext1len;
-                } else if (ext_type == curve_ext_id) {
-                    int curve_len = *p;
+                } else if (ext_type == ec_point_ext_id) {
+                    int curve_len_1 = *p;
                     p++;
                     unsigned char *c;
-                    c = apr_pcalloc(f->c->pool, (curve_len * 5) + 1);
-                    cfg->curves = (const char *)c;
+                    c = apr_pcalloc(f->c->pool, (curve_len_1 * 5) + 1);
+                    cfg->curve_len = curve_len_1;
+                    cfg->ec_point = (const char *)c;
 
-                    while (curve_len > 0) {
-                        if ((const char *)c != cfg->curves) {
-                            *c++ = '-';
+                    while (curve_len_1 > 0) {
+                        if ((const char *)c != cfg->ec_point) {
+                            *c++ = ',';
                         }
                         c2x(*p, c);
                         p++;
-                        curve_len--;
+                        curve_len_1--;
                         c+= 2;
                     }
                     *c = '\0';
@@ -1015,6 +1023,26 @@ static int sslhaf_pre_conn(conn_rec *c, void *csd) {
     return OK;
 }
 
+char * str_to_dec(char* string) {
+    char * str = malloc(10);
+    int cur = 0;
+    int res = 0;
+    int length = strlen(string);
+    length--;
+
+    for (int i = 0; string[i] != '\0'; i++) {
+        if (string[i]>='0' && string[i]<='9') {
+            cur = string[i] - 48;
+        } else if(string[i]>='a' && string[i]<='f') {
+            cur = string[i] - 87;
+        }
+        res += cur * pow(16, length);
+        length--;
+    }
+    sprintf(str, "%d-", res);
+    return str;
+}
+
 /**
  * Take the textual representation of the client's cipher suite
  * list and attach it to the request.
@@ -1032,7 +1060,31 @@ static int sslhaf_post_request(request_rec *r) {
         // Make the handshake information available to other modules
         apr_table_setn(r->subprocess_env, "SSLHAF_HANDSHAKE", cfg->thandshake);
         apr_table_setn(r->subprocess_env, "SSLHAF_PROTOCOL", cfg->tprotocol);
-        apr_table_setn(r->subprocess_env, "SSLHAF_SUITES", cfg->tsuites);
+
+        char grease_table[][5] = { "0a0a", "1a1a", "2a2a", "3a3a", 
+        "4a4a", "5a5a", "6a6a", "7a7a", "8a8a", "9a9a", "aaaa", "baba",
+        "caca", "dada", "eaea", "fafa"};
+
+        char * suites = calloc(100, 1);
+        char ste2[100];
+        strcpy(ste2, cfg->tsuites);
+        char * token = strtok(ste2, ",");
+
+        while (token != NULL) {
+            int to_convert = 1;
+            for (int i = 0; i<16; i++) {
+                if (strcmp(token, grease_table[i]) == 0) {
+                    to_convert = 0;
+                    break;
+                }
+            }
+            if (to_convert) {
+                strcat(suites, str_to_dec(token));
+            }
+            token = strtok(NULL, ",");
+        }
+        suites[strlen(suites)-1] = '\0';
+        apr_table_setn(r->subprocess_env, "SSLHAF_SUITES", suites);
 
         // Expose compression methods
         apr_table_setn(r->subprocess_env, "SSLHAF_COMPRESSION", cfg->compression_methods);
@@ -1040,12 +1092,78 @@ static int sslhaf_post_request(request_rec *r) {
         // Expose extension data
         char *extensions_len = apr_psprintf(r->pool, "%d", cfg->extensions_len);
         apr_table_setn(r->subprocess_env, "SSLHAF_EXTENSIONS_LEN", extensions_len);
-        apr_table_setn(r->subprocess_env, "SSLHAF_EXTENSIONS", cfg->extensions);
+        char * ext = calloc(100, 1);
+        char ext_cpy[100];
+        strcpy(ext_cpy, cfg->extensions);
+        token = strtok(ext_cpy, ",");
+
+        while (token != NULL) {
+            int to_convert = 1;
+            for (int i = 0; i<16; i++) {
+                if (strcmp(token, grease_table[i]) == 0) {
+                    to_convert = 0;
+                    break;
+                }
+            }
+            if (to_convert) {
+                strcat(ext, str_to_dec(token));
+            }
+            token = strtok(NULL, ",");
+        }
+        ext[strlen(ext)-1] = '\0';
+        apr_table_setn(r->subprocess_env, "SSLHAF_EXTENSIONS", ext);
 
         // Expose ec_point_format and curves
         // char *ec = apr_psprintf(r->pool, "%d", cfg->ec_point);
-        apr_table_setn(r->subprocess_env, "EC_POINT", cfg->ec_point);
-        apr_table_setn(r->subprocess_env, "CURVES", cfg->curves);
+
+        char * ec_pt = calloc(100, 1);
+        char ec_cpy[100];
+        strcpy(ec_cpy, cfg->ec_point);
+        if (strlen(ec_cpy) > 2) {
+            token = strtok(ec_cpy, ",");
+
+            while (token != NULL) {
+                int to_convert = 1;
+                for (int i = 0; i<16; i++) {
+                    if (strcmp(token, grease_table[i]) == 0) {
+                        to_convert = 0;
+                        break;
+                    }
+                }
+                if (to_convert) {
+                    strcat(ec_pt, str_to_dec(token));
+                }
+                token = strtok(NULL, ",");
+            }
+        } else {
+            strcat(ec_pt, str_to_dec(ec_cpy));
+        }
+
+        ec_pt[strlen(ec_pt)-1] = '\0';
+
+        apr_table_setn(r->subprocess_env, "EC_POINT", ec_pt);
+
+        char * curves = calloc(100, 1);
+        char curve_cpy[100];
+        strcpy(curve_cpy, cfg->curves);
+        token = strtok(curve_cpy, ",");
+
+        while (token != NULL) {
+            int to_convert = 1;
+            for (int i = 0; i<16; i++) {
+                if (strcmp(token, grease_table[i]) == 0) {
+                    to_convert = 0;
+                    break;
+                }
+            }
+            if (to_convert) {
+                strcat(curves, str_to_dec(token));
+            }
+            token = strtok(NULL, ",");
+        }
+        curves[strlen(curves)-1] = '\0';
+
+        apr_table_setn(r->subprocess_env, "CURVES", curves);
 
 
         // Keep track of how many requests there were
