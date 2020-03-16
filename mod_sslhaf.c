@@ -1059,7 +1059,21 @@ static int sslhaf_post_request(request_rec *r) {
         
         // Make the handshake information available to other modules
         apr_table_setn(r->subprocess_env, "SSLHAF_HANDSHAKE", cfg->thandshake);
-        apr_table_setn(r->subprocess_env, "SSLHAF_PROTOCOL", cfg->tprotocol);
+        char * protocol_ver;
+        switch (cfg->tprotocol) {
+            case "3.0":
+                protocol_ver = "769";
+                break;
+            case "3.1":
+                protocol_ver = "770";
+                break;
+            case "3.2":
+                protocol_ver = "771";
+                break;
+            case "3.3":
+                protocol_ver = "772";
+        }
+        apr_table_setn(r->subprocess_env, "SSLHAF_PROTOCOL", protocol_ver);
 
         char grease_table[][5] = { "0a0a", "1a1a", "2a2a", "3a3a", 
         "4a4a", "5a5a", "6a6a", "7a7a", "8a8a", "9a9a", "aaaa", "baba",
