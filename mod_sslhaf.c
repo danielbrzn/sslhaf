@@ -65,7 +65,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  *     LoadModule sslhaf_module /path/to/modules/mod_sslhaf.so
  *
+ * You will need to enable HTTPS on your Apache server before using this module.
  * You will also need to add a custom log to record cipher suite information.
+ * The file you modify will generally be /etc/apache2/sites-available/default-ssl.conf
  * For example (add to the virtual host where you want the fingerprinting
  * to take place):
  *
@@ -113,6 +115,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * - SSLHAF_RAW contains the entire raw Client Hello, encoded as a hex string. 
  *
  *   CustomLog logs/sslhaf.log "YOUR_LOG_STRING_HERE" env=SSLHAF_LOG
+ * - JA3_HASH contains the JA3 fingerprint for the current request. It is calculated based on the
+ *   following format: TLSVersion,Ciphers,Extensions,EllipticCurves,EllipticCurvePointFormats
+ *   where the fields have their particulatr values (in decimal) comma separated.
+ *   e.g. 769,47-53-5-10-49161-49162-49171-49172,0-10-11,23-24-25,0
  *
  */
 
