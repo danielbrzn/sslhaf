@@ -676,7 +676,7 @@ static int decode_packet_v3_handshake(ap_filter_t *f, sslhaf_cfg_t *cfg) {
                     p += 2;
                     // elen -= 2;
                     unsigned char *e;
-                    e = apr_pcalloc(f->c->pool, (ec_len * 5) + 1);
+                    e = apr_pcalloc(f->c->pool, (ec_len * 10) + 1);
                     cfg->curves = (const char *)e;
 
                     while (ec_len > 0) {
@@ -698,7 +698,7 @@ static int decode_packet_v3_handshake(ap_filter_t *f, sslhaf_cfg_t *cfg) {
                     int curve_len_1 = *p;
                     p++;
                     unsigned char *c;
-                    c = apr_pcalloc(f->c->pool, (curve_len_1 * 5) + 1);
+                    c = apr_pcalloc(f->c->pool, (curve_len_1 * 10) + 1);
                     cfg->curve_len = curve_len_1;
                     cfg->ec_point = (const char *)c;
 
@@ -1102,8 +1102,8 @@ static int sslhaf_post_request(request_rec *r) {
         "4a4a", "5a5a", "6a6a", "7a7a", "8a8a", "9a9a", "aaaa", "baba",
         "caca", "dada", "eaea", "fafa"};
 
-        char * suites = calloc(100, 1);
-        char ste2[100];
+        char * suites = calloc(1000, 1);
+        char ste2[1000];
         strcpy(ste2, cfg->tsuites);
         char * token = strtok(ste2, ",");
 
@@ -1129,8 +1129,8 @@ static int sslhaf_post_request(request_rec *r) {
         // Expose extension data
         char *extensions_len = apr_psprintf(r->pool, "%d", cfg->extensions_len);
         apr_table_setn(r->subprocess_env, "SSLHAF_EXTENSIONS_LEN", extensions_len);
-        char * ext = calloc(100, 1);
-        char ext_cpy[100];
+        char * ext = calloc(1000, 1);
+        char ext_cpy[1000];
         strcpy(ext_cpy, cfg->extensions);
         token = strtok(ext_cpy, ",");
 
@@ -1153,8 +1153,8 @@ static int sslhaf_post_request(request_rec *r) {
         // Expose ec_point_format and curves
         // char *ec = apr_psprintf(r->pool, "%d", cfg->ec_point);
 
-        char * ec_pt = calloc(100, 1);
-        char ec_cpy[100];
+        char * ec_pt = calloc(1000, 1);
+        char ec_cpy[1000];
         strcpy(ec_cpy, cfg->ec_point);
         if (strlen(ec_cpy) > 2) {
             token = strtok(ec_cpy, ",");
@@ -1180,8 +1180,8 @@ static int sslhaf_post_request(request_rec *r) {
 
         apr_table_setn(r->subprocess_env, "EC_POINT", ec_pt);
 
-        char * curves = calloc(100, 1);
-        char curve_cpy[100];
+        char * curves = calloc(1000, 1);
+        char curve_cpy[1000];
         strcpy(curve_cpy, cfg->curves);
         token = strtok(curve_cpy, ",");
 
